@@ -3,7 +3,7 @@
 // byte for byte, so the house can read the post and its counts.
 // Node 22, standard library only. Run it as:
 //   mkdir -p out && MAKEFUN_BOT_DIR=. MAKEFUN_OUTPUT_DIR=out node main.ts
-import { copyFileSync, mkdirSync } from 'node:fs';
+import { copyFileSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -14,4 +14,11 @@ const outputDir = process.env.MAKEFUN_OUTPUT_DIR
     : join(repoDir, 'out'));
 
 mkdirSync(outputDir, { recursive: true });
-copyFileSync(join(repoDir, 'POST.json'), join(outputDir, 'POST.json'));
+const source = join(repoDir, 'POST.json');
+const target = join(outputDir, 'POST.json');
+copyFileSync(source, target);
+// Self-check: the copy must be byte-identical, or the house reads a
+// different post address than the repository holds.
+if (!readFileSync(source).equals(readFileSync(target))) {
+  throw new Error('POST.json copy mismatch: output differs from repository');
+}
