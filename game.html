@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Snake — built from one prompt</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  html, body { margin: 0; padding: 0; background: #0b0b10; height: 100%; overflow: hidden; }
+  body { display: flex; flex-direction: column; align-items: center; justify-content: center;
+         font-family: "DejaVu Sans Mono", monospace; color: #f2f2f2; }
+  #hud { width: 960px; display: flex; justify-content: space-between; align-items: baseline;
+         padding: 0 8px 14px; box-sizing: border-box; }
+  #title { font-size: 44px; font-weight: bold; letter-spacing: 4px; color: #39ff88; }
+  #score { font-size: 44px; font-weight: bold; color: #ff2e88; }
+  #sub { font-size: 26px; color: #9a9ab0; }
+  canvas { background: #101018; border: 4px solid #2a2a3a; border-radius: 18px;
+           box-shadow: 0 0 60px rgba(57,255,136,.25); display: block; }
+</style>
+</head>
+<body>
+  <div id="hud">
+    <span id="title">SNAKE</span>
+    <span id="sub">one prompt &middot; zero edits</span>
+    <span id="score">SCORE 0</span>
+  </div>
+  <canvas id="game" width="960" height="960"></canvas>
+  <script>
+    // Tiny Snake, built from one prompt. Arrow keys / WASD to steer.
+    // Add ?autoplay=1 and a little bot plays it for you.
+    const canvas = document.getElementById('game');
+    const ctx = canvas.getContext('2d');
+    const N = 24, CELL = canvas.width / N;
+    const AUTOPLAY = new URLSearchParams(location.search).has('autoplay');
+    let snake = [{x: 12, y: 12}, {x: 11, y: 12}, {x: 10, y: 12}];
+    let dir = {x: 1, y: 0};
+    let pending = [];
+    let food = spawnFood();
+    let score = 0, alive = true, speed = 130;
+    const scoreEl = document.getElementById('score');
+
+    function spawnFood() {
+      let p;
+      do { p = {x: (Math.random() * N) | 0, y: (Math.random() * N) | 0}; }
+      while (snake.some(s => s.x === p.x && s.y === p.y));
+      return p;
+    }
+
+    function key(e) {
+      const k = e.key.toLowerCase();
+      const d = {arrowup: [0,-1], w: [0,-1], arrowdown: [0,1], s: [0,1],
+                 arrowleft: [-1,0], a: [-1,0], arrowright: [1,0], d: [1,0]}[k];
+      if (d) { pending.push({x: d[0], y: d[1]}); e.preventDefault(); }
+    }
+    addEventListener('keydown', key);
+
+    // The autoplay bot: chase the food, never run into a wall or its own tail.
+    function botDir() {
+      const head = snake[0];
+      const options = [{x:1,y:0},{x:-1,y:0},{x:0,y:1},{x:0,y:-1}]
+        .filter(d => !(d.x === -dir.x && d.y === -dir.y));
+      const safe = d => {
+        const nx = head.x + d.x, ny = head.y + d.y;
+        if (nx < 0 || ny < 0 || nx >= N || ny >= N) return false;
+        return !snake.slice(0, -1).some(s => s.x === nx && s.y === ny);
+      };
+      const good = options.filter(safe);
+      if (!good.length) return options[0];
+      good.sort((a, b) => {
+        const da = Math.abs(head.x + a.x - food.x) + Math.abs(head.y + a.y - food.y);
+        const db = Math.abs(head.x + b.x - food.x) + Math.abs(head.y + b.y - food.y);
+        return da - db;
+      });
+      return good[0];
+    }
+
+    function step() {
+      if (!alive) return;
+      if (AUTOPLAY) dir = botDir();
+      while (pending.length) {
+        const d = pending.shift();
+        if (!(d.x === -dir.x && d.y === -dir.y)) { dir = d; break; }
+      }
+      const head = {x: snake[0].x + dir.x, y: snake[0].y + dir.y};
+      if (head.x < 0 || head.y < 0 || head.x >= N || head.y >= N ||
+          snake.some(s => s.x === head.x && s.y === head.y)) {
+        alive = false;
+        draw();
+        setTimeout(reset, 900);
+        return;
+      }
+      snake.unshift(head);
+      if (head.x === food.x && head.y === food.y) {
+        score += 10;
+        scoreEl.textContent = 'SCORE ' + score;
+        food = spawnFood();
+        speed = Math.max(70, speed - 3);
+      } else {
+        snake.pop();
+      }
+      draw();
+      setTimeout(step, speed);
+    }
+
+    function reset() {
+      snake = [{x: 12, y: 12}, {x: 11, y: 12}, {x: 10, y: 12}];
+      dir = {x: 1, y: 0};
+      food = spawnFood();
+      score = 0;
+      scoreEl.textContent = 'SCORE 0';
+      speed = 130;
+      alive = true;
+      draw();
+      setTimeout(step, speed);
+    }
+
+    function draw() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.strokeStyle = '#1c1c28';
+      ctx.lineWidth = 1;
+      for (let i = 1; i < N; i++) {
+        ctx.beginPath(); ctx.moveTo(i * CELL, 0); ctx.lineTo(i * CELL, canvas.height); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0, i * CELL); ctx.lineTo(canvas.width, i * CELL); ctx.stroke();
+      }
+      ctx.fillStyle = '#ff2e88';
+      ctx.beginPath();
+      ctx.arc(food.x * CELL + CELL / 2, food.y * CELL + CELL / 2, CELL * 0.38, 0, Math.PI * 2);
+      ctx.fill();
+      snake.forEach((s, i) => {
+        const t = 1 - i / snake.length;
+        ctx.fillStyle = i === 0 ? '#baff5e' : `rgba(57,255,136,${0.35 + 0.65 * t})`;
+        const pad = i === 0 ? 2 : 4;
+        ctx.beginPath();
+        ctx.roundRect(s.x * CELL + pad, s.y * CELL + pad, CELL - pad * 2, CELL - pad * 2, 9);
+        ctx.fill();
+      });
+      if (!alive) {
+        ctx.fillStyle = 'rgba(11,11,16,0.72)';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = '#ff2e88';
+        ctx.font = 'bold 84px "DejaVu Sans Mono", monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText('GAME OVER', canvas.width / 2, canvas.height / 2 - 10);
+        ctx.fillStyle = '#f2f2f2';
+        ctx.font = '40px "DejaVu Sans Mono", monospace';
+        ctx.fillText('score ' + score + ' — restarting…', canvas.width / 2, canvas.height / 2 + 60);
+      }
+    }
+
+    draw();
+    setTimeout(step, 700);
+  </script>
+</body>
+</html>
